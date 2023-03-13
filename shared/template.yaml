@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  B2B-Shared
+Globals:
+  Function:
+    Timeout: 20
+    Architectures:
+      - x86_64
+    MemorySize: 512
+    Environment:
+      Variables:
+        TENANT_NAME: !Ref AWS::StackName
+  Api:
+    Cors:
+      AllowMethods: "'GET, POST, OPTIONS, PUT, DELETE, PATCH'"
+      AllowHeaders: "'content-type, Authorization'"
+      AllowOrigin: "'*'"
+
+Resources:
+  MyDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: "20"
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      DBInstanceClass: db.t3.micro
+      Engine: Postgres
+      DBInstanceIdentifier: !Ref AWS::StackName
+      EngineVersion: 14.6
+      MasterUsername: postgres
+      MasterUserPassword: postgres
+      MultiAZ: false
+      Port: "5432"
+      PubliclyAccessible: true
+      StorageType: gp2
+      VPCSecurityGroups:
+        - sg-0dc1004fcd2cc9c26
+      DBSubnetGroupName: dev_subnet_rds_vpc
+    DeletionPolicy: Snapshot
+
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        Authorizers:
+          ProviderAuthorizer:
+            FunctionArn: !GetAtt ProviderAuth.Arn
+            Identity:
+              Headers:
+              ReauthorizeEvery: 0
+          TenantAuthorizer:
+            FunctionArn: !GetAtt TenantAuth.Arn
+            Identity:
+              Headers:
+              ReauthorizeEvery: 0
+
+  ProviderAuth:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: middleware/providerAuth.auth
+      Runtime: nodejs16.x
+      Description: Authorizer
+      Environment:
+        Variables:
+          SECRET_KEY: Rahasia
+      Layers:
+        - !Ref Layers
+
+  TenantAuth:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: tenant/auth.auth
+      Runtime: nodejs16.x
+      Description: Authorizer For Tenant
+      Environment:
+        Variables:
+          SECRET_KEY: Rahasia
+      Layers:
+        - !Ref Layers
+
+  CloudFormationCreatedSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Name: !Join ["-", [Tenant, !Ref AWS::StackName]]
+      Description: Secret for Db.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "saanvi"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+
+  Layers:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: dependecies
+      Description: dependecies
+      ContentUri: src/dependecies/
+      CompatibleRuntimes:
+        - nodejs16.x
+      LicenseInfo: "MIT"
+      RetentionPolicy: Retain
+
+  createProvider:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/provider/createProvider.createProvider
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /provider
+            Method: POST
+      Layers:
+        - !Ref Layers
+
+  loginProvider:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/provider/login.login
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /provider/login
+            Method: POST
+      Environment:
+        Variables:
+          SECRET_KEY: Rahasia
+      Layers:
+        - !Ref Layers
+
+  createTenant:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/tenant/createTenant.createTenant
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tenant
+            Method: POST
+            Auth:
+              Authorizer: ProviderAuthorizer
+      Layers:
+        - !Ref Layers
+      Environment:
+        Variables:
+          db: !Ref AWS::StackName
+
+  editTenantStatus:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/tenant/editStatus.editStatus
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tenant-status/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: ProviderAuthorizer
+      Layers:
+        - !Ref Layers
+
+  getTenant:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/tenant/getTenant.findAll
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tenant
+            Method: GET
+            Auth:
+              Authorizer: ProviderAuthorizer
+      Layers:
+        - !Ref Layers
+
+  getTenantById:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/tenant/getTenantById.findByPk
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tenant/{id}
+            Method: GET
+            Auth:
+              Authorizer: ProviderAuthorizer
+      Layers:
+        - !Ref Layers
+
+  tenantLogin:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/tenant/login.login
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /tenant/login
+            Method: POST
+      Environment:
+        Variables:
+          SECRET_KEY: Rahasia
+      Layers:
+        - !Ref Layers
+
+Outputs:
+  Api:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"

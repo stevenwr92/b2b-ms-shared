@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  B2B-Siloed
+Globals:
+  Function:
+    Timeout: 20
+    Architectures:
+      - x86_64
+    MemorySize: 512
+    Environment:
+      Variables:
+        TENANT_NAME: !Ref AWS::StackName
+  Api:
+    Cors:
+      AllowMethods: "'GET, POST, OPTIONS, PUT, DELETE, PATCH'"
+      AllowHeaders: "'content-type, Authorization'"
+      AllowOrigin: "'*'"
+
+Resources:
+  MyDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: "20"
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      DBInstanceClass: db.t3.micro
+      Engine: Postgres
+      DBInstanceIdentifier: !Ref AWS::StackName
+      EngineVersion: 14.6
+      MasterUsername: postgres
+      MasterUserPassword: postgres
+      MultiAZ: false
+      Port: "5432"
+      PubliclyAccessible: true
+      StorageType: gp2
+      VPCSecurityGroups:
+        - sg-0dc1004fcd2cc9c26
+      DBSubnetGroupName: dev_subnet_rds_vpc
+    DeletionPolicy: Snapshot
+
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        Authorizers:
+          TenantAuthorizer:
+            FunctionArn: !GetAtt TenantAuth.Arn
+            Identity:
+              Headers:
+              ReauthorizeEvery: 0
+
+  TenantAuth:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: middleware/tenantAuth.auth
+      Runtime: nodejs16.x
+      Description: Authorizer For Tenant
+      Environment:
+        Variables:
+          SECRET_KEY: Rahasia
+      Layers:
+        - !Ref Layers
+
+  CloudFormationCreatedSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Name: !Join ["-", [Tenant, !Ref AWS::StackName]]
+      Description: Secret for Db.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "saanvi"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+
+  Layers:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: dependecies
+      Description: dependecies
+      ContentUri: src/dependecies/
+      CompatibleRuntimes:
+        - nodejs16.x
+      LicenseInfo: "MIT"
+      RetentionPolicy: Retain
+
+  createUser:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/user/createUser.createUser
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /user
+            Method: POST
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  getGroup:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/group/getGroup.findAll
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group
+            Method: GET
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  getGroupById:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/group/getGroupById.findOne
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group/{id}
+            Method: GET
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  getUser:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/user/getUser.findAll
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /user
+            Method: GET
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  createGroup:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/group/createGroup.createGroup
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group
+            Method: POST
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  addMember:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/group/addMember.addMember
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /member
+            Method: POST
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  createRole:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/grouprole/createRole.createRole
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group-role
+            Method: POST
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+  updateRole:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/grouprole/updateRole.updateRole
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group-role/{id}
+            Method: GET
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
+Outputs:
+  Api:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
