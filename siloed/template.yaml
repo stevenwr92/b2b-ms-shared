@@ -211,6 +211,24 @@ Resources:
       Layers:
         - !Ref Layers
 
+  bulkCreateRole:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler/grouprole/bulkCreateRole.bulkCreateRole
+      Runtime: nodejs16.x
+      Events:
+        getTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /group-bulk
+            Method: POST
+            Auth:
+              Authorizer: TenantAuthorizer
+      Layers:
+        - !Ref Layers
+
   updateRole:
     Type: AWS::Serverless::Function
     Properties:

@@ -26,7 +26,7 @@ exports.findOne = async function (event, callback) {
         include: [User, RolePolicy],
       },
     });
-    console.log(data);
+    if (!data) throw { name: `NotFound` };
     response = {
       statusCode: 200,
       headers: {

@@ -2,7 +2,7 @@ const { loadSequelize } = require("../../models/index");
 
 let db = null;
 let response;
-exports.createRole = async function (event, callback) {
+exports.bulkCreateRole = async function (event, callback) {
   // re-use the sequelize instance across invocations to improve performance
   if (!db) {
     db = await loadSequelize();
@@ -16,20 +16,34 @@ exports.createRole = async function (event, callback) {
     }
   }
   let transaction;
-  console.log(event.body);
   try {
+    console.log(event);
     const { GroupRole, RolePolicy } = db.sequelize.models;
     const body = JSON.parse(event.body);
-    transaction = await db.sequelize.transaction();
-
-    const addRole = {
-      GroupId: body.GroupId,
-      role_name: body.role_name,
-      role_level: body.role_level,
+    // // transaction = await db.sequelize.transaction();
+    const GroupId = body.GroupId;
+    const l1Role = {
+      GroupId,
+      role_name: body.l1_role_name,
+      role_level: 1,
     };
-    let newGroupRole = await GroupRole.create(addRole, { transaction });
+    const l2Role = {
+      GroupId,
+      role_name: body.l2_role_name,
+      role_level: 2,
+    };
+    const l3Role = {
+      GroupId,
+      role_name: body.l3_role_name,
+      role_level: 3,
+    };
 
-    const policy = {
+    let data = [l1Role, l2Role, l3Role];
+
+    let bulkCreateRole = await GroupRole.bulkCreate(data);
+    console.log(bulkCreateRole);
+
+    const l1Policy = {
       approval_topup: body.approval_topup,
       approval_expense: body.approval_expense,
       approval_prebudget: body.approval_prebudget,
@@ -37,9 +51,25 @@ exports.createRole = async function (event, callback) {
       GroupRoleId: newGroupRole.id,
     };
 
-    await RolePolicy.create(policy, { transaction });
+    const l2Policy = {
+      approval_topup: body.approval_topup,
+      approval_expense: body.approval_expense,
+      approval_prebudget: body.approval_prebudget,
+      manage_budget: body.manage_budget,
+      GroupRoleId: newGroupRole.id,
+    };
 
-    await transaction.commit();
+    const l3Policy = {
+      approval_topup: body.approval_topup,
+      approval_expense: body.approval_expense,
+      approval_prebudget: body.approval_prebudget,
+      manage_budget: body.manage_budget,
+      GroupRoleId: newGroupRole.id,
+    };
+
+    // await RolePolicy.create(policy, { transaction });
+
+    // await transaction.commit();
 
     response = {
       statusCode: 201,
@@ -48,13 +78,11 @@ exports.createRole = async function (event, callback) {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST",
       },
-      body: JSON.stringify(
-        `Success create GroupRole ${newGroupRole.role_name}.`
-      ),
+      body: JSON.stringify(`Success create GroupRole.`),
     };
     return response;
   } catch (err) {
-    await transaction.rollback();
+    // await transaction.rollback();
     console.log(err);
     response = {
       statusCode: 400,
@@ -63,7 +91,7 @@ exports.createRole = async function (event, callback) {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST",
       },
-      body: JSON.stringify(err.errors[0].message),
+      body: JSON.stringify(err),
     };
     return response;
   } finally {

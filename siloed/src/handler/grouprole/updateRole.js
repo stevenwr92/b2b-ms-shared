@@ -18,17 +18,19 @@ exports.updateRole = async function (event, callback) {
   let transaction;
   try {
     const { GroupRole, RolePolicy } = db.sequelize.models;
-    const body = JSON.parse(event.body);
+    // const body = JSON.parse(event.body);
     const id = event.pathParameters.id;
-    transaction = await db.sequelize.transaction();
+    // transaction = await db.sequelize.transaction();
 
     const Group = await GroupRole.findByPk(id, { include: RolePolicy });
+    if (!Group) throw { name: `NotFound` };
 
-    // const addRole = {
-    //   GroupId: body.GroupId,
-    //   role_name: body.role_name,
-    //   role_level: body.role_level,
-    // };
+    const editRole = {
+      GroupId: body.GroupId,
+      role_name: body.role_name,
+      role_level: body.role_level,
+    };
+    
     // let updateGroupRole = await GroupRole.update(
     //   addRole,
     //   { where: { id } },
@@ -51,23 +53,34 @@ exports.updateRole = async function (event, callback) {
       headers: {
         "Access-Control-Allow-Headers": "Content-Type",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "PUT",
+        "Access-Control-Allow-Methods": "GET",
       },
       body: JSON.stringify(`Success edit GroupRole ${Group}.`),
     };
     return response;
   } catch (err) {
-    await transaction.rollback();
-    console.log(err);
-    response = {
-      statusCode: 400,
-      headers: {
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "PUT",
-      },
-      body: JSON.stringify(err.errors[0].message),
-    };
+    // await transaction.rollback();
+    if (err.name == "NotFound") {
+      response = {
+        statusCode: 404,
+        headers: {
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "PUT",
+        },
+        body: JSON.stringify("Group Role Not Found"),
+      };
+    } else {
+      response = {
+        statusCode: 400,
+        headers: {
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "PUT",
+        },
+        body: JSON.stringify(err.errors[0].message),
+      };
+    }
     return response;
   } finally {
     // close any opened connections during the invocation
